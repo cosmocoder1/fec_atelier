@@ -17,6 +17,8 @@ import mockProduct from '../mock_api/mock_product.js';
 import mockStyles from '../mock_api/mock_styles.js';
 import getPercentRecommended from '../modules/percentRecommended.js';
 
+import Promise from 'bluebird';
+
 
 class App extends React.Component {
 
@@ -39,6 +41,7 @@ class App extends React.Component {
     this.retrieveProduct = this.retrieveProduct.bind(this);
     this.retrieveStyles = this.retrieveStyles.bind(this);
     this.handleSearch = this.handleSearch.bind(this);
+    this.loadState = this.loadState.bind(this);
 
     this.retrieveRelatedProducts = this.retrieveRelatedProducts.bind(this);
     this.retrieveAllForRelated = this.retrieveAllForRelated.bind(this);
@@ -54,15 +57,167 @@ class App extends React.Component {
 
   componentDidMount() {
 
-    this.retrieveProduct(this.state.productId);
-    this.retrieveRelatedProducts(this.state.productId);
-    this.retrieveRatings();
+    this.loadState();
+    // this.retrieveProduct(this.state.productId);
+    // this.retrieveRelatedProducts(this.state.productId);
+    // this.retrieveRatings();
 
   }
 
   componentDidUpdate() {
 
   }
+
+  loadState() {
+
+    var promises = [];
+
+    // retrieve Product
+    var product = new Promise((resolve, reject) => {
+      $.ajax({
+        method: 'GET',
+        url: `products/${this.state.productId}`
+      }).done((res) => {
+        resolve(res);
+      })
+    })
+
+    // retrieve Styles
+    var styles = new Promise((resolve, reject) => {
+      $.ajax({
+        method: 'GET',
+        url: `styles/${this.state.productId}`
+      }).done((res) => {
+        resolve(res);
+      })
+    })
+
+    // retrieve Ratings
+    var ratings = new Promise((resolve, reject) => {
+      $.ajax({
+        method: 'GET',
+        url: `https://app-hrsei-api.herokuapp.com/api/fec2/hr-rpp/reviews/?product_id=${this.state.productId}`,
+        headers: {
+          "Authorization": APIkey
+        }
+      }).done((res) => {
+        resolve(res);
+      })
+    })
+
+    // retrieve Related Product Id's
+    var related = new Promise((resolve, reject) => {
+      $.ajax({
+        method: 'GET',
+        url: `https://app-hrsei-api.herokuapp.com/api/fec2/hr-rpp/products/${this.state.productId}/related`,
+        headers: {
+          "Authorization": APIkey
+        }
+      }).done((res) => {
+        resolve(res);
+      })
+
+    })
+
+    // retrieve Related Products
+    var getRelatedItems = (ids) => {
+
+      var ids = ids.join('&');
+
+      return new Promise((resolve, reject) => {
+
+        $.ajax({
+          method: 'GET',
+          url: `related/${ids}`,
+          success: (data) => {
+            resolve(data);
+          },
+          error: (err) => {
+            console.log('error getting all for related', err)
+          }
+        })
+      })
+
+    }
+
+    var getRelatedForOutfits = (ids) => {
+
+      var ids = ids.join('&');
+
+      return new Promise((resolve, reject) => {
+
+    $.ajax({
+      method: 'GET',
+      url: `outfits/${ids}`,
+      success: (data) => {
+        var threeAtATime = data.slice(0, 3);
+        resolve([data, threeAtATime])
+      },
+      error: (err) => {
+        console.log('error getting outfit data', err);
+      }
+    })
+
+      })
+
+    }
+
+
+
+    var productState;
+    var stylesState;
+    var ratingsState;
+    var allRelatedState;
+    var relatedData;
+    var outfitsState;
+    var outfitViewState;
+
+    product.then(data => {
+      productState = data;
+    }).then(() => {
+      return styles;
+    }).then((data) => {
+      stylesState = data;
+    }).then(() => {
+      return ratings;
+    }).then((data) => {
+      ratingsState = data;
+    }).then(() => {
+      return related;
+    }).then((data) => {
+      relatedData = data;
+      return getRelatedItems(data);
+    }).then((data) => {
+      allRelatedState = data;
+    }).then(() => {
+      return getRelatedForOutfits(relatedData);
+    }).then((data) => {
+      outfitsState = data[0];
+      outfitViewState = data[1];
+    }).then(() => {
+
+      this.setState({
+        ...this.state,
+      product: productState,
+      styles: stylesState,
+      ratings: ratingsState,
+      averageRating: parseAverageRating(ratingsState),
+      percentRecommended: getPercentRecommended(ratingsState),
+      allRelated: allRelatedState,
+      outfitIds: [],
+      outfits: outfitsState,
+      outfitView: outfitViewState,
+      outfitPosition: 0,
+      })
+
+    })
+
+
+
+
+  }
+
+
 
   retrieveProduct(id) {
 
@@ -72,7 +227,7 @@ class App extends React.Component {
       method: 'GET',
       url: `products/${id}`
     }).done((res) => {
-        this.retrieveStyles(res, this.state.productId);
+      this.retrieveStyles(res, this.state.productId);
     })
 
   }
@@ -180,7 +335,7 @@ class App extends React.Component {
       success: (data) => {
         this.setState({
           allRelated: data
-        }, () => {})
+        }, () => { })
       },
       error: (err) => {
         console.log('error getting all for related', err)
@@ -198,7 +353,7 @@ class App extends React.Component {
         this.setState({
           outfits: data,
           outfitView: threeAtATime,
-        }, () => {})
+        }, () => { })
       },
       error: (err) => {
         console.log('error getting outfit data', err);
@@ -259,7 +414,7 @@ class App extends React.Component {
       outfitIds: outfitIds,
       outfits: outfits,
       outfitView: viewIndex,
-    }, () => {})
+    }, () => { })
   }
 
   handleLeftArrow() {
@@ -306,11 +461,11 @@ class App extends React.Component {
         <div className={'siteAnnouncementBar'}>
           <div className={'announcement'}><i>SITE-WIDE ANNOUNCEMENT MESSAGE!</i> - SALE / DISCOUNT <b>OFFER</b> - NEW PRODUCT HIGHLIGHT</div>
         </div>
-        <div>{this.state.product && this.state.styles ? <Overview product={this.state.product} styles={this.state.styles} rating={this.state.averageRating}/> : null }</div>
+        <div>{this.state.product && this.state.styles ? <Overview product={this.state.product} styles={this.state.styles} rating={this.state.averageRating} /> : null}</div>
         {this.state.allRelated.length > 0 ? <RelatedItems all={this.state.allRelated} outfits={this.state.outfitView} clickCard={this.handleRelatedCardClick} addOutfit={this.addToOutfit} remove={this.removeFromOutfits} name={this.state.product} right={this.handleRightArrow} left={this.handleLeftArrow} position={this.state.outfitPosition} /> : null}
         <QuestionsAndAnswers />
         <div className="ratingsAndReviews">
-        {this.state.ratings ? <RatingsAndReviews reviews={this.state.ratings} averageRating={this.state.averageRating} percent={this.state.percentRecommended}/> : null }
+          {this.state.ratings ? <RatingsAndReviews reviews={this.state.ratings} averageRating={this.state.averageRating} percent={this.state.percentRecommended} /> : null}
         </div>
       </div>
     )
